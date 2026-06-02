@@ -1,0 +1,21 @@
+services:
+  # Container 1: Your FastAPI Application
+  web:
+    build: .
+    ports:
+      - "8000:8000"
+    environment:
+      # This matches the database URL in our Python code
+      - DATABASE_URL=postgresql://myuser:mypassword@db:5432/fastapidb
+    depends_on:
+      - db # This tells Docker to start the database FIRST
+
+  # Container 2: The Official PostgreSQL Database
+  db:
+    image: postgres:15
+    environment:
+      - POSTGRES_USER=myuser
+      - POSTGRES_PASSWORD=mypassword
+      - POSTGRES_DB=fastapidb
+    ports:
+      - "5432:5432"
