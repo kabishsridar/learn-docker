@@ -1,0 +1,442 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ImageVault - Camera Portal</title>
+    <!-- Premium Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&family=Outfit:wght@400;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+    <div class="background-decor">
+        <div class="circle circle-1"></div>
+        <div class="circle circle-2"></div>
+    </div>
+    
+    <div class="container">
+        <header>
+            <h1 class="logo-title">Image<span>Vault</span> Cam</h1>
+            <p class="subtitle">Capture photos from your camera and store them directly in PostgreSQL database</p>
+        </header>
+
+        <main class="dashboard">
+            <!-- Camera Control Section -->
+            <section class="camera-section glass-card">
+                <h2 class="section-title">Camera Dashboard</h2>
+                
+                <div class="camera-viewport">
+                    <!-- Live video stream -->
+                    <video id="webcam" autoplay playsinline class="viewport-element"></video>
+                    
+                    <!-- Captured still preview -->
+                    <img id="captured-preview" class="viewport-element hidden" alt="Captured snapshot preview">
+                    
+                    <!-- Hidden canvas used for capturing -->
+                    <canvas id="capture-canvas" class="hidden"></canvas>
+                    
+                    <!-- Viewport overlay state indicator -->
+                    <div id="viewport-overlay" class="viewport-overlay">
+                        <svg class="camera-placeholder-icon" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                        </svg>
+                        <p id="overlay-text">Camera Feed Inactive</p>
+                    </div>
+                </div>
+
+                <div class="controls-grid">
+                    <button type="button" id="toggle-camera-btn" class="btn btn-secondary">
+                        <span id="toggle-btn-text">Open Camera</span>
+                    </button>
+                    
+                    <button type="button" id="capture-btn" class="btn btn-primary" disabled>
+                        <span>Capture Still</span>
+                    </button>
+
+                    <!-- Post-capture action row under capture button -->
+                    <div class="post-capture-row hidden" id="capture-controls">
+                        <button type="button" id="cancel-capture-btn" class="btn btn-danger">
+                            <span>Cancel</span>
+                        </button>
+                        
+                        <button type="button" id="save-db-btn" class="btn btn-success">
+                            <span>Save to DB</span>
+                            <div class="spinner hidden" id="spinner"></div>
+                        </button>
+                    </div>
+                </div>
+                
+                <div id="alert-box" class="alert-box hidden"></div>
+            </section>
+
+            <!-- Gallery Section -->
+            <section class="gallery-section glass-card">
+                <h2 class="section-title">Database Storage Gallery</h2>
+                <div id="gallery-loading" class="gallery-placeholder">
+                    <div class="loader"></div>
+                    <p>Loading database records...</p>
+                </div>
+                <div id="gallery-empty" class="gallery-placeholder hidden">
+                    <svg class="empty-icon" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
+                    </svg>
+                    <p>No images stored in the database yet</p>
+                </div>
+                <div id="image-grid" class="image-grid hidden"></div>
+            </section>
+        </main>
+    </div>
+
+    <!-- Image Lightbox Modal -->
+    <div id="lightbox" class="lightbox hidden">
+        <span class="close-lightbox">&times;</span>
+        <img class="lightbox-content" id="lightbox-img" alt="Enlarged database image">
+        <div id="lightbox-caption"></div>
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            const video = document.getElementById('webcam');
+            const capturedPreview = document.getElementById('captured-preview');
+            const canvas = document.getElementById('capture-canvas');
+            const viewportOverlay = document.getElementById('viewport-overlay');
+            const overlayText = document.getElementById('overlay-text');
+            
+            const toggleCameraBtn = document.getElementById('toggle-camera-btn');
+            const toggleBtnText = document.getElementById('toggle-btn-text');
+            const captureBtn = document.getElementById('capture-btn');
+            const saveDbBtn = document.getElementById('save-db-btn');
+            const cancelCaptureBtn = document.getElementById('cancel-capture-btn');
+            const captureControls = document.getElementById('capture-controls');
+            
+            const alertBox = document.getElementById('alert-box');
+            const spinner = document.getElementById('spinner');
+            const imageGrid = document.getElementById('image-grid');
+            const galleryLoading = document.getElementById('gallery-loading');
+            const galleryEmpty = document.getElementById('gallery-empty');
+            
+            const lightbox = document.getElementById('lightbox');
+            const lightboxImg = document.getElementById('lightbox-img');
+            const lightboxCaption = document.getElementById('lightbox-caption');
+            const closeLightbox = document.querySelector('.close-lightbox');
+
+            let localStream = null;
+            let capturedBlob = null;
+
+            // Load initial gallery from DB
+            loadGallery();
+
+            // Toggle Camera (Open/Shut Camera)
+            toggleCameraBtn.addEventListener('click', () => {
+                if (localStream) {
+                    stopCameraStream();
+                    showAlert('Camera stream stopped.', 'info');
+                } else {
+                    startCameraStream();
+                }
+            });
+
+            // Start Camera Stream (WebRTC)
+            function startCameraStream() {
+                hideAlert();
+
+                // WebRTC secure context check
+                if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+                    showAlert('Camera access is not supported by your browser or requires a secure context (HTTPS/localhost).', 'error');
+                    return;
+                }
+
+                toggleCameraBtn.disabled = true;
+                toggleBtnText.textContent = "Connecting...";
+
+                const constraints = {
+                    video: {
+                        width: { ideal: 1280 },
+                        height: { ideal: 720 },
+                        facingMode: "user"
+                    },
+                    audio: false
+                };
+
+                navigator.mediaDevices.getUserMedia(constraints)
+                .then(stream => {
+                    localStream = stream;
+                    video.srcObject = stream;
+                    video.classList.remove('hidden');
+                    capturedPreview.classList.add('hidden');
+                    viewportOverlay.classList.add('hidden');
+                    
+                    toggleCameraBtn.disabled = false;
+                    toggleCameraBtn.classList.remove('btn-secondary');
+                    toggleCameraBtn.classList.add('btn-danger');
+                    toggleBtnText.textContent = "Shut Camera";
+                    
+                    captureBtn.disabled = false;
+                    saveDbBtn.disabled = true;
+                })
+                .catch(err => {
+                    toggleCameraBtn.disabled = false;
+                    toggleCameraBtn.classList.remove('btn-danger');
+                    toggleCameraBtn.classList.add('btn-secondary');
+                    toggleBtnText.textContent = "Open Camera";
+                    
+                    captureBtn.disabled = true;
+                    saveDbBtn.disabled = true;
+
+                    // Detailed error handling for hardware and permission states
+                    console.error("Camera access error:", err);
+                    if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
+                        showAlert('Camera permission denied. Please allow camera access in your browser settings.', 'error');
+                    } else if (err.name === 'NotFoundError' || err.name === 'DevicesNotFoundError') {
+                        showAlert('No camera hardware detected on this device.', 'error');
+                    } else if (err.name === 'NotReadableError' || err.name === 'TrackStartError') {
+                        showAlert('Camera is already in use by another application.', 'error');
+                    } else {
+                        showAlert(`Error accessing camera: ${err.message}`, 'error');
+                    }
+                });
+            }
+
+            // Stop Camera Stream
+            function stopCameraStream() {
+                if (localStream) {
+                    localStream.getTracks().forEach(track => track.stop());
+                    localStream = null;
+                }
+                video.srcObject = null;
+                video.classList.add('hidden');
+                
+                toggleCameraBtn.classList.remove('btn-danger');
+                toggleCameraBtn.classList.add('btn-secondary');
+                toggleBtnText.textContent = "Open Camera";
+                
+                captureBtn.disabled = true;
+                
+                if (!capturedBlob) {
+                    viewportOverlay.classList.remove('hidden');
+                    overlayText.textContent = "Camera Feed Inactive";
+                }
+            }
+
+            // Capture Still
+            captureBtn.addEventListener('click', () => {
+                if (!localStream) return;
+
+                // Configure canvas size matching the active video stream size
+                const videoWidth = video.videoWidth || 640;
+                const videoHeight = video.videoHeight || 480;
+                canvas.width = videoWidth;
+                canvas.height = videoHeight;
+
+                const ctx = canvas.getContext('2d');
+                // Draw current video frame onto canvas
+                ctx.drawImage(video, 0, 0, videoWidth, videoHeight);
+
+                // Convert canvas content to Blob (PNG format)
+                canvas.toBlob(blob => {
+                    capturedBlob = blob;
+                    
+                    // Show captured image in preview element
+                    const dataUrl = canvas.toDataURL('image/png');
+                    capturedPreview.src = dataUrl;
+                    
+                    video.classList.add('hidden');
+                    capturedPreview.classList.remove('hidden');
+                    
+                    // Stop camera stream after capture
+                    stopCameraStream();
+                    
+                    // Show post-capture options under capture button
+                    toggleCameraBtn.disabled = true;
+                    captureBtn.disabled = true;
+                    captureControls.classList.remove('hidden');
+                    saveDbBtn.disabled = false;
+                    
+                    showAlert('Snapshot captured! Select to Save or Cancel.', 'success');
+                }, 'image/png');
+            });
+
+            // Cancel / Retake Capture
+            cancelCaptureBtn.addEventListener('click', () => {
+                capturedBlob = null;
+                capturedPreview.src = '';
+                capturedPreview.classList.add('hidden');
+                
+                // Hide post-capture options
+                captureControls.classList.add('hidden');
+                
+                showAlert('Snapshot cancelled. Restarting camera...', 'info');
+                // Auto-restart camera stream for seamless user retaking
+                startCameraStream();
+            });
+
+            // Save to DB
+            saveDbBtn.addEventListener('click', () => {
+                if (!capturedBlob) return;
+
+                const formData = new FormData();
+                // Generate a randomized name for the snapshot
+                const filename = `capture_${Math.floor(Date.now() / 1000)}.png`;
+                formData.append('image', capturedBlob, filename);
+
+                saveDbBtn.disabled = true;
+                cancelCaptureBtn.disabled = true;
+                spinner.classList.remove('hidden');
+                showAlert('Storing captured image into database...', 'info');
+
+                fetch('/upload', {
+                    method: 'POST',
+                    body: formData
+                })
+                .then(response => {
+                    return response.json().then(data => {
+                        if (!response.ok) {
+                            throw new Error(data.error || 'Failed to save image.');
+                        }
+                        return data;
+                    });
+                })
+                .then(data => {
+                    showAlert(`Success! Saved with Database ID ${data.image_id}.`, 'success');
+                    capturedBlob = null;
+                    capturedPreview.src = '';
+                    capturedPreview.classList.add('hidden');
+                    viewportOverlay.classList.remove('hidden');
+                    overlayText.textContent = "Camera Feed Inactive";
+                    
+                    // Reset controls back to initial state
+                    captureControls.classList.add('hidden');
+                    toggleCameraBtn.disabled = false;
+                    captureBtn.disabled = true;
+                    
+                    loadGallery(); // Reload database records
+                })
+                .catch(error => {
+                    showAlert(error.message, 'error');
+                })
+                .finally(() => {
+                    saveDbBtn.disabled = false;
+                    cancelCaptureBtn.disabled = false;
+                    spinner.classList.add('hidden');
+                });
+            });
+
+            // Fetch stored database images dynamically
+            function loadGallery() {
+                galleryLoading.classList.remove('hidden');
+                imageGrid.classList.add('hidden');
+                galleryEmpty.classList.add('hidden');
+
+                fetch('/api/images')
+                .then(response => response.json())
+                .then(data => {
+                    galleryLoading.classList.add('hidden');
+                    
+                    if (data.images && data.images.length > 0) {
+                        imageGrid.textContent = ''; // clear grid securely
+                        
+                        data.images.forEach(img => {
+                            const card = document.createElement('div');
+                            card.className = 'image-card';
+                            
+                            const imgElement = document.createElement('img');
+                            imgElement.src = `/images/${img.id}`;
+                            imgElement.alt = img.filename;
+                            imgElement.loading = 'lazy';
+                            imgElement.addEventListener('click', () => openImageLightbox(img.id, img.filename));
+
+                            const details = document.createElement('div');
+                            details.className = 'image-details';
+
+                            const title = document.createElement('span');
+                            title.className = 'image-title';
+                            title.textContent = img.filename;
+
+                            const meta = document.createElement('span');
+                            meta.className = 'image-meta';
+                            const date = new Date(img.created_at);
+                            meta.textContent = `ID: ${img.id} | ${date.toLocaleDateString()} ${date.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}`;
+
+                            const deleteBtn = document.createElement('button');
+                            deleteBtn.className = 'delete-btn';
+                            deleteBtn.innerHTML = `
+                                <svg class="trash-icon" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                                </svg>
+                            `;
+                            deleteBtn.addEventListener('click', (e) => {
+                                e.stopPropagation();
+                                deleteImage(img.id);
+                            });
+
+                            details.appendChild(title);
+                            details.appendChild(meta);
+                            card.appendChild(imgElement);
+                            card.appendChild(details);
+                            card.appendChild(deleteBtn);
+                            
+                            imageGrid.appendChild(card);
+                        });
+                        
+                        imageGrid.classList.remove('hidden');
+                    } else {
+                        galleryEmpty.classList.remove('hidden');
+                    }
+                })
+                .catch(err => {
+                    galleryLoading.classList.add('hidden');
+                    showAlert('Failed to connect to database API.', 'error');
+                });
+            }
+
+            // Delete database image
+            function deleteImage(id) {
+                if (!confirm(`Are you sure you want to delete Image ID ${id} from database?`)) return;
+
+                fetch(`/api/delete/${id}`, {
+                    method: 'POST'
+                })
+                .then(response => {
+                    if (!response.ok) throw new Error('Deletion failed.');
+                    loadGallery(); // Reload database records
+                })
+                .catch(err => {
+                    showAlert(err.message, 'error');
+                });
+            }
+
+            // Lightbox Modal Controls
+            function openImageLightbox(id, name) {
+                lightboxImg.src = `/images/${id}`;
+                lightboxCaption.textContent = name;
+                lightbox.classList.remove('hidden');
+            }
+
+            closeLightbox.addEventListener('click', () => {
+                lightbox.classList.add('hidden');
+                lightboxImg.src = '';
+            });
+
+            lightbox.addEventListener('click', (e) => {
+                if (e.target === lightbox) {
+                    lightbox.classList.add('hidden');
+                    lightboxImg.src = '';
+                }
+            });
+
+            // Show alert message
+            function showAlert(message, type) {
+                alertBox.textContent = message;
+                alertBox.className = `alert-box alert-${type}`;
+                alertBox.classList.remove('hidden');
+            }
+
+            function hideAlert() {
+                alertBox.classList.add('hidden');
+            }
+        });
+    </script>
+</body>
+</html>

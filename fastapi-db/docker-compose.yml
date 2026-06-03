@@ -1,0 +1,26 @@
+services:
+  # Flask API Application
+  web:
+    image: kabishsridar/fastapi-db-flask:latest
+    restart: always
+    ports:
+      - "5001:5000"
+    environment:
+      - DATABASE_URL=postgresql://myuser:mypassword@db:5432/fastapidb
+    depends_on:
+      - db
+
+  # PostgreSQL Database
+  db:
+    image: postgres:15
+    environment:
+      - POSTGRES_USER=myuser
+      - POSTGRES_PASSWORD=mypassword
+      - POSTGRES_DB=fastapidb
+    ports:
+      - "5434:5432"  # Exposed to port 5434 on the host to avoid potential port conflicts
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+
+volumes:
+  pgdata:

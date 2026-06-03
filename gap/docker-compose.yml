@@ -1,0 +1,19 @@
+services:
+  gap-measurement:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: kabishsridar/gap-measurement:latest
+    container_name: gap_measurement_app
+    network_mode: host
+    environment:
+      - DISPLAY=${DISPLAY:-:0}
+      - QT_X11_NO_MITSHM=1
+    volumes:
+      - /tmp/.X11-unix:/tmp/.X11-unix:ro
+      - /dev:/dev:rw
+    device_cgroup_rules:
+      - 'c 81:* rmw'   # Video / Camera devices
+      - 'c 242:* rmw'  # VCHIQ (Raspberry Pi camera interface)
+    privileged: true
+    restart: unless-stopped

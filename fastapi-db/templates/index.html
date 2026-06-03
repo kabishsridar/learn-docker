@@ -1,0 +1,335 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ImageVault - Postgres Image Storage</title>
+    <!-- Premium Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&family=Outfit:wght@400;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+    <div class="background-decor">
+        <div class="circle circle-1"></div>
+        <div class="circle circle-2"></div>
+    </div>
+    
+    <div class="container">
+        <header>
+            <h1 class="logo-title">Image<span>Vault</span></h1>
+            <p class="subtitle">Securely upload and store images directly in PostgreSQL database</p>
+        </header>
+
+        <main class="dashboard">
+            <!-- Upload section -->
+            <section class="upload-section glass-card">
+                <h2 class="section-title">Upload New Image</h2>
+                <form id="upload-form" enctype="multipart/form-data">
+                    <div id="drop-zone" class="drop-zone">
+                        <div class="drop-zone-prompt">
+                            <!-- SVG Upload Icon -->
+                            <svg class="upload-icon" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                            </svg>
+                            <span class="main-text">Drag & drop your image here</span>
+                            <span class="sub-text">or <label for="file-input" class="browse-link">browse files</label></span>
+                            <span class="formats-text">Supports PNG, JPG, JPEG, WEBP (Max 10MB)</span>
+                        </div>
+                        <input type="file" name="image" id="file-input" accept=".png,.jpg,.jpeg,.gif,.webp" class="file-input">
+                        <div id="preview-container" class="preview-container hidden">
+                            <img id="image-preview" src="" alt="Preview">
+                            <button type="button" id="remove-preview-btn" class="remove-btn">&times;</button>
+                        </div>
+                    </div>
+                    
+                    <button type="submit" id="submit-btn" class="btn btn-primary" disabled>
+                        <span>Upload Image</span>
+                        <div class="spinner hidden" id="spinner"></div>
+                    </button>
+                </form>
+                
+                <div id="alert-box" class="alert-box hidden"></div>
+            </section>
+
+            <!-- Gallery section -->
+            <section class="gallery-section glass-card">
+                <h2 class="section-title">Database Storage Gallery</h2>
+                <div id="gallery-loading" class="gallery-placeholder">
+                    <div class="loader"></div>
+                    <p>Loading database records...</p>
+                </div>
+                <div id="gallery-empty" class="gallery-placeholder hidden">
+                    <svg class="empty-icon" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
+                    </svg>
+                    <p>No images stored in the database yet</p>
+                </div>
+                <div id="image-grid" class="image-grid hidden"></div>
+            </section>
+        </main>
+    </div>
+
+    <!-- Image Lightbox Modal -->
+    <div id="lightbox" class="lightbox hidden">
+        <span class="close-lightbox">&times;</span>
+        <img class="lightbox-content" id="lightbox-img" alt="Enlarged database image">
+        <div id="lightbox-caption"></div>
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            const dropZone = document.getElementById('drop-zone');
+            const fileInput = document.getElementById('file-input');
+            const uploadForm = document.getElementById('upload-form');
+            const previewContainer = document.getElementById('preview-container');
+            const imagePreview = document.getElementById('image-preview');
+            const removePreviewBtn = document.getElementById('remove-preview-btn');
+            const submitBtn = document.getElementById('submit-btn');
+            const alertBox = document.getElementById('alert-box');
+            const spinner = document.getElementById('spinner');
+            const imageGrid = document.getElementById('image-grid');
+            const galleryLoading = document.getElementById('gallery-loading');
+            const galleryEmpty = document.getElementById('gallery-empty');
+            
+            // Lightbox Modal elements
+            const lightbox = document.getElementById('lightbox');
+            const lightboxImg = document.getElementById('lightbox-img');
+            const lightboxCaption = document.getElementById('lightbox-caption');
+            const closeLightbox = document.querySelector('.close-lightbox');
+
+            // Load initial gallery from DB
+            loadGallery();
+
+            // Drag and drop events
+            ['dragenter', 'dragover'].forEach(eventName => {
+                dropZone.addEventListener(eventName, (e) => {
+                    e.preventDefault();
+                    dropZone.classList.add('highlight');
+                }, false);
+            });
+
+            ['dragleave', 'drop'].forEach(eventName => {
+                dropZone.addEventListener(eventName, (e) => {
+                    e.preventDefault();
+                    dropZone.classList.remove('highlight');
+                }, false);
+            });
+
+            dropZone.addEventListener('drop', (e) => {
+                const dt = e.dataTransfer;
+                const files = dt.files;
+                if (files.length) {
+                    fileInput.files = files;
+                    handleFileSelection(files[0]);
+                }
+            });
+
+            fileInput.addEventListener('change', (e) => {
+                if (fileInput.files.length) {
+                    handleFileSelection(fileInput.files[0]);
+                }
+            });
+
+            removePreviewBtn.addEventListener('click', (e) => {
+                e.stopPropagation(); // prevent triggering dropzone clicks
+                resetFileSelection();
+            });
+
+            // Handle preview generating
+            function handleFileSelection(file) {
+                // Size validation: 10MB limit
+                if (file.size > 10 * 1024 * 1024) {
+                    showAlert('File size exceeds the 10MB limit.', 'error');
+                    resetFileSelection();
+                    return;
+                }
+
+                // Extension validation
+                const allowedExtensions = ['png', 'jpg', 'jpeg', 'gif', 'webp'];
+                const fileExt = file.name.split('.').pop().toLowerCase();
+                if (!allowedExtensions.includes(fileExt)) {
+                    showAlert('File format not supported. Please choose an image.', 'error');
+                    resetFileSelection();
+                    return;
+                }
+
+                // Show preview
+                const reader = new FileReader();
+                reader.readAsDataURL(file);
+                reader.onloadend = () => {
+                    imagePreview.src = reader.result;
+                    previewContainer.classList.remove('hidden');
+                    dropZone.classList.add('has-preview');
+                    submitBtn.disabled = false;
+                    hideAlert();
+                };
+            }
+
+            function resetFileSelection() {
+                fileInput.value = '';
+                imagePreview.src = '';
+                previewContainer.classList.add('hidden');
+                dropZone.classList.remove('has-preview');
+                submitBtn.disabled = true;
+            }
+
+            // Show alert message
+            function showAlert(message, type) {
+                alertBox.textContent = message;
+                alertBox.className = `alert-box alert-${type}`;
+                alertBox.classList.remove('hidden');
+            }
+
+            function hideAlert() {
+                alertBox.classList.add('hidden');
+            }
+
+            // Form Submit Event (AJAX Upload)
+            uploadForm.addEventListener('submit', (e) => {
+                e.preventDefault();
+                
+                const file = fileInput.files[0];
+                if (!file) return;
+
+                const formData = new FormData();
+                formData.append('image', file);
+
+                submitBtn.disabled = true;
+                spinner.classList.remove('hidden');
+                showAlert('Storing image into database...', 'info');
+
+                fetch('/upload', {
+                    method: 'POST',
+                    body: formData
+                })
+                .then(response => {
+                    return response.json().then(data => {
+                        if (!response.ok) {
+                            throw new Error(data.error || 'Failed to upload image.');
+                        }
+                        return data;
+                    });
+                })
+                .then(data => {
+                    showAlert(`Success! Stored with ID ${data.image_id}.`, 'success');
+                    resetFileSelection();
+                    loadGallery(); // Reload stored database records
+                })
+                .catch(error => {
+                    showAlert(error.message, 'error');
+                    submitBtn.disabled = false;
+                })
+                .finally(() => {
+                    spinner.classList.add('hidden');
+                });
+            });
+
+            // Fetch stored database images dynamically
+            function loadGallery() {
+                galleryLoading.classList.remove('hidden');
+                imageGrid.classList.add('hidden');
+                galleryEmpty.classList.add('hidden');
+
+                fetch('/api/images')
+                .then(response => response.json())
+                .then(data => {
+                    galleryLoading.classList.add('hidden');
+                    
+                    if (data.images && data.images.length > 0) {
+                        imageGrid.textContent = ''; // clear grid securely
+                        
+                        data.images.forEach(img => {
+                            const card = document.createElement('div');
+                            card.className = 'image-card';
+                            
+                            const imgElement = document.createElement('img');
+                            // Directly point source to binary server endpoint
+                            imgElement.src = `/images/${img.id}`;
+                            imgElement.alt = img.filename;
+                            imgElement.loading = 'lazy';
+                            imgElement.addEventListener('click', () => openImageLightbox(img.id, img.filename));
+
+                            const details = document.createElement('div');
+                            details.className = 'image-details';
+
+                            const title = document.createElement('span');
+                            title.className = 'image-title';
+                            title.textContent = img.filename;
+
+                            const meta = document.createElement('span');
+                            meta.className = 'image-meta';
+                            const date = new Date(img.created_at);
+                            meta.textContent = `ID: ${img.id} | ${date.toLocaleDateString()} ${date.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}`;
+
+                            const deleteBtn = document.createElement('button');
+                            deleteBtn.className = 'delete-btn';
+                            deleteBtn.innerHTML = `
+                                <svg class="trash-icon" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                                </svg>
+                            `;
+                            deleteBtn.addEventListener('click', (e) => {
+                                e.stopPropagation();
+                                deleteImage(img.id);
+                            });
+
+                            details.appendChild(title);
+                            details.appendChild(meta);
+                            card.appendChild(imgElement);
+                            card.appendChild(details);
+                            card.appendChild(deleteBtn);
+                            
+                            imageGrid.appendChild(card);
+                        });
+                        
+                        imageGrid.classList.remove('hidden');
+                    } else {
+                        galleryEmpty.classList.remove('hidden');
+                    }
+                })
+                .catch(err => {
+                    galleryLoading.classList.add('hidden');
+                    showAlert('Failed to connect to database API.', 'error');
+                });
+            }
+
+            // Delete database image
+            function deleteImage(id) {
+                if (!confirm(`Are you sure you want to delete Image ID ${id} from database?`)) return;
+
+                fetch(`/api/delete/${id}`, {
+                    method: 'POST'
+                })
+                .then(response => {
+                    if (!response.ok) throw new Error('Deletion failed.');
+                    loadGallery(); // Reload database records
+                })
+                .catch(err => {
+                    showAlert(err.message, 'error');
+                });
+            }
+
+            // Lightbox Modal Controls
+            function openImageLightbox(id, name) {
+                lightboxImg.src = `/images/${id}`;
+                lightboxCaption.textContent = name;
+                lightbox.classList.remove('hidden');
+            }
+
+            closeLightbox.addEventListener('click', () => {
+                lightbox.classList.add('hidden');
+                lightboxImg.src = '';
+            });
+
+            lightbox.addEventListener('click', (e) => {
+                if (e.target === lightbox) {
+                    lightbox.classList.add('hidden');
+                    lightboxImg.src = '';
+                }
+            });
+        });
+    </script>
+</body>
+</html>
