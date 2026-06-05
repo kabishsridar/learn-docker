@@ -1,0 +1,619 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ImageVault - AI Object Detection Portal</title>
+    <!-- Premium Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&family=Outfit:wght@400;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+    <div class="background-decor">
+        <div class="circle circle-1"></div>
+        <div class="circle circle-2"></div>
+    </div>
+    
+    <div class="container">
+        <header>
+            <h1 class="logo-title">Image<span>Vault</span></h1>
+            <p class="subtitle">Securely upload and store images directly in PostgreSQL database</p>
+        </header>
+
+        <main class="dashboard">
+            <!-- Left Side: Capture/Upload Card -->
+            <section class="control-panel glass-card">
+                <div class="tabs-header">
+                    <button class="tab-btn active" onclick="switchTab('camera')">Webcam Capture</button>
+                    <button class="tab-btn" onclick="switchTab('upload')">File Upload</button>
+                </div>
+
+                <!-- Tab 1: Webcam Feed -->
+                <div id="tab-camera" class="tab-content">
+                    <h2 class="section-title">Camera Dashboard</h2>
+                    <div class="camera-viewport">
+                        <video id="webcam" autoplay playsinline class="viewport-element"></video>
+                        <img id="captured-preview" class="viewport-element hidden" alt="Captured snapshot preview">
+                        <canvas id="capture-canvas" class="hidden"></canvas>
+                        
+                        <div id="viewport-overlay" class="viewport-overlay">
+                            <svg class="camera-placeholder-icon" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                            </svg>
+                            <p id="overlay-text">Camera Feed Inactive</p>
+                        </div>
+                    </div>
+
+                    <div class="controls-grid">
+                        <button type="button" id="toggle-camera-btn" class="btn btn-secondary">
+                            <span id="toggle-btn-text">Open Camera</span>
+                        </button>
+                        
+                        <button type="button" id="capture-btn" class="btn btn-primary" disabled>
+                            <span>Capture Still</span>
+                        </button>
+
+                        <div class="post-capture-row hidden" id="capture-controls">
+                            <button type="button" id="cancel-capture-btn" class="btn btn-danger">
+                                <span>Cancel</span>
+                            </button>
+                            <button type="button" id="save-db-btn" class="btn btn-success">
+                                <span>Save & Detect</span>
+                                <div class="spinner hidden" id="spinner"></div>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Tab 2: Drag & Drop File Upload -->
+                <div id="tab-upload" class="tab-content hidden">
+                    <h2 class="section-title">Upload New Image</h2>
+                    <div class="upload-zone" id="drop-zone">
+                        <input type="file" id="file-input" class="hidden" accept="image/*">
+                        <svg class="upload-icon" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                        </svg>
+                        <p class="upload-text">Drag & drop your image here</p>
+                        <p class="upload-subtext">or <a href="#" id="browse-link">browse files</a></p>
+                        <p class="upload-limits">Supports PNG, JPG, JPEG, WEBP (Max 10MB)</p>
+                    </div>
+
+                    <div id="file-preview-container" class="file-preview-card hidden">
+                        <img id="file-preview" src="" alt="File preview">
+                        <div class="file-info">
+                            <span id="file-name">filename.jpg</span>
+                            <span id="file-size">1.2 MB</span>
+                        </div>
+                    </div>
+
+                    <div class="controls-grid">
+                        <button type="button" id="upload-submit-btn" class="btn btn-primary" disabled>
+                            <span>Upload Image</span>
+                            <div class="spinner hidden" id="upload-spinner"></div>
+                        </button>
+                    </div>
+                </div>
+
+                <div id="alert-box" class="alert-box hidden"></div>
+            </section>
+
+            <!-- Right Side: Storage Gallery -->
+            <section class="gallery-panel glass-card">
+                <h2 class="section-title">Database Storage Gallery</h2>
+                <div id="gallery-loading" class="gallery-placeholder">
+                    <div class="loader"></div>
+                    <p>Loading database records...</p>
+                </div>
+                <div id="gallery-empty" class="gallery-placeholder hidden">
+                    <svg class="empty-icon" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
+                    </svg>
+                    <p>No images stored in the database yet</p>
+                </div>
+                <div id="image-grid" class="image-grid hidden"></div>
+            </section>
+        </main>
+    </div>
+
+    <!-- Image Lightbox Modal with Side-by-Side Comparison -->
+    <div id="lightbox" class="lightbox hidden">
+        <span class="close-lightbox">&times;</span>
+        <div class="lightbox-container">
+            <h3 id="lightbox-title">Image Details</h3>
+            <div class="comparison-grid">
+                <div class="comparison-pane">
+                    <h4>Original Image</h4>
+                    <div class="pane-wrapper">
+                        <img id="lightbox-img-raw" src="" alt="Original raw image">
+                    </div>
+                </div>
+                <div class="comparison-pane">
+                    <h4>YOLOv11 Processed Image</h4>
+                    <div class="pane-wrapper">
+                        <img id="lightbox-img-processed" src="" alt="YOLOv11 annotated image">
+                    </div>
+                </div>
+            </div>
+            <div class="lightbox-meta">
+                <div class="meta-tag">
+                    <strong>Objects Detected:</strong> <span id="lightbox-detected-objects">Pending...</span>
+                </div>
+                <div class="meta-tag">
+                    <strong>Captured On:</strong> <span id="lightbox-date">Date</span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            // Camera Tab Elements
+            const video = document.getElementById('webcam');
+            const capturedPreview = document.getElementById('captured-preview');
+            const canvas = document.getElementById('capture-canvas');
+            const viewportOverlay = document.getElementById('viewport-overlay');
+            const overlayText = document.getElementById('overlay-text');
+            
+            const toggleCameraBtn = document.getElementById('toggle-camera-btn');
+            const toggleBtnText = document.getElementById('toggle-btn-text');
+            const captureBtn = document.getElementById('capture-btn');
+            const saveDbBtn = document.getElementById('save-db-btn');
+            const cancelCaptureBtn = document.getElementById('cancel-capture-btn');
+            const captureControls = document.getElementById('capture-controls');
+            const spinner = document.getElementById('spinner');
+            
+            // Upload Tab Elements
+            const dropZone = document.getElementById('drop-zone');
+            const fileInput = document.getElementById('file-input');
+            const browseLink = document.getElementById('browse-link');
+            const filePreviewContainer = document.getElementById('file-preview-container');
+            const filePreview = document.getElementById('file-preview');
+            const fileNameSpan = document.getElementById('file-name');
+            const fileSizeSpan = document.getElementById('file-size');
+            const uploadSubmitBtn = document.getElementById('upload-submit-btn');
+            const uploadSpinner = document.getElementById('upload-spinner');
+
+            // Common Elements
+            const alertBox = document.getElementById('alert-box');
+            const imageGrid = document.getElementById('image-grid');
+            const galleryLoading = document.getElementById('gallery-loading');
+            const galleryEmpty = document.getElementById('gallery-empty');
+            
+            // Lightbox Elements
+            const lightbox = document.getElementById('lightbox');
+            const lightboxImgRaw = document.getElementById('lightbox-img-raw');
+            const lightboxImgProcessed = document.getElementById('lightbox-img-processed');
+            const lightboxTitle = document.getElementById('lightbox-title');
+            const lightboxDetected = document.getElementById('lightbox-detected-objects');
+            const lightboxDate = document.getElementById('lightbox-date');
+            const closeLightbox = document.querySelector('.close-lightbox');
+
+            let localStream = null;
+            let capturedBlob = null;
+            let uploadedFile = null;
+
+            // Load initial gallery from DB
+            loadGallery();
+
+            // --- TAB SWITCHER LOGIC ---
+            window.switchTab = function(tabName) {
+                document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
+                document.querySelectorAll('.tab-content').forEach(content => content.classList.add('hidden'));
+                
+                hideAlert();
+                
+                if (tabName === 'camera') {
+                    document.querySelector('.tab-btn[onclick="switchTab(\'camera\')"]').classList.add('active');
+                    document.getElementById('tab-camera').classList.remove('hidden');
+                } else {
+                    document.querySelector('.tab-btn[onclick="switchTab(\'upload\')"]').classList.add('active');
+                    document.getElementById('tab-upload').classList.remove('hidden');
+                    // Stop camera if running
+                    stopCameraStream();
+                }
+            };
+
+            // --- CAMERA WORKFLOW ---
+            toggleCameraBtn.addEventListener('click', () => {
+                if (localStream) {
+                    stopCameraStream();
+                    showAlert('Camera stream stopped.', 'info');
+                } else {
+                    startCameraStream();
+                }
+            });
+
+            function startCameraStream() {
+                hideAlert();
+                if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+                    showAlert('Camera access is not supported by your browser or requires a secure context (HTTPS/localhost).', 'error');
+                    return;
+                }
+
+                toggleCameraBtn.disabled = true;
+                toggleBtnText.textContent = "Connecting...";
+
+                const constraints = {
+                    video: { width: { ideal: 1280 }, height: { ideal: 720 }, facingMode: "user" },
+                    audio: false
+                };
+
+                navigator.mediaDevices.getUserMedia(constraints)
+                .then(stream => {
+                    localStream = stream;
+                    video.srcObject = stream;
+                    video.classList.remove('hidden');
+                    capturedPreview.classList.add('hidden');
+                    viewportOverlay.classList.add('hidden');
+                    
+                    toggleCameraBtn.disabled = false;
+                    toggleCameraBtn.classList.remove('btn-secondary');
+                    toggleCameraBtn.classList.add('btn-danger');
+                    toggleBtnText.textContent = "Shut Camera";
+                    
+                    captureBtn.disabled = false;
+                    saveDbBtn.disabled = true;
+                })
+                .catch(err => {
+                    toggleCameraBtn.disabled = false;
+                    toggleCameraBtn.classList.remove('btn-danger');
+                    toggleCameraBtn.classList.add('btn-secondary');
+                    toggleBtnText.textContent = "Open Camera";
+                    captureBtn.disabled = true;
+                    saveDbBtn.disabled = true;
+
+                    console.error("Camera access error:", err);
+                    if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
+                        showAlert('Camera permission denied. Please allow camera access in settings.', 'error');
+                    } else if (err.name === 'NotFoundError' || err.name === 'DevicesNotFoundError') {
+                        showAlert('No camera hardware detected.', 'error');
+                    } else {
+                        showAlert(`Error accessing camera: ${err.message}`, 'error');
+                    }
+                });
+            }
+
+            function stopCameraStream() {
+                if (localStream) {
+                    localStream.getTracks().forEach(track => track.stop());
+                    localStream = null;
+                }
+                video.srcObject = null;
+                video.classList.add('hidden');
+                
+                toggleCameraBtn.classList.remove('btn-danger');
+                toggleCameraBtn.classList.add('btn-secondary');
+                toggleBtnText.textContent = "Open Camera";
+                captureBtn.disabled = true;
+                
+                if (!capturedBlob) {
+                    viewportOverlay.classList.remove('hidden');
+                    overlayText.textContent = "Camera Feed Inactive";
+                }
+            }
+
+            captureBtn.addEventListener('click', () => {
+                if (!localStream) return;
+
+                const videoWidth = video.videoWidth || 640;
+                const videoHeight = video.videoHeight || 480;
+                canvas.width = videoWidth;
+                canvas.height = videoHeight;
+
+                const ctx = canvas.getContext('2d');
+                ctx.drawImage(video, 0, 0, videoWidth, videoHeight);
+
+                canvas.toBlob(blob => {
+                    capturedBlob = blob;
+                    const dataUrl = canvas.toDataURL('image/png');
+                    capturedPreview.src = dataUrl;
+                    
+                    video.classList.add('hidden');
+                    capturedPreview.classList.remove('hidden');
+                    
+                    stopCameraStream();
+                    
+                    toggleCameraBtn.disabled = true;
+                    captureBtn.disabled = true;
+                    captureControls.classList.remove('hidden');
+                    saveDbBtn.disabled = false;
+                    
+                    showAlert('Snapshot captured! Click "Save & Detect" to run object detection.', 'success');
+                }, 'image/png');
+            });
+
+            cancelCaptureBtn.addEventListener('click', () => {
+                capturedBlob = null;
+                capturedPreview.src = '';
+                capturedPreview.classList.add('hidden');
+                captureControls.classList.add('hidden');
+                
+                showAlert('Snapshot cancelled. Restarting camera...', 'info');
+                startCameraStream();
+            });
+
+            saveDbBtn.addEventListener('click', () => {
+                if (!capturedBlob) return;
+
+                const formData = new FormData();
+                const filename = `capture_${Math.floor(Date.now() / 1000)}.png`;
+                formData.append('file', capturedBlob, filename); // Field name must match 'file' in FastAPI
+
+                saveDbBtn.disabled = true;
+                cancelCaptureBtn.disabled = true;
+                spinner.classList.remove('hidden');
+                showAlert('Saving raw image and executing YOLOv11 object detection...', 'info');
+
+                fetch('/upload', {
+                    method: 'POST',
+                    body: formData
+                })
+                .then(response => {
+                    return response.json().then(data => {
+                        if (!response.ok) {
+                            throw new Error(data.detail || 'Failed to save/process image.');
+                        }
+                        return data;
+                    });
+                })
+                .then(data => {
+                    showAlert(`Success! Detected: [${data.objects}] (Stored as ID ${data.image_id})`, 'success');
+                    capturedBlob = null;
+                    capturedPreview.src = '';
+                    capturedPreview.classList.add('hidden');
+                    viewportOverlay.classList.remove('hidden');
+                    overlayText.textContent = "Camera Feed Inactive";
+                    
+                    captureControls.classList.add('hidden');
+                    toggleCameraBtn.disabled = false;
+                    captureBtn.disabled = true;
+                    
+                    loadGallery();
+                })
+                .catch(error => {
+                    showAlert(error.message, 'error');
+                })
+                .finally(() => {
+                    saveDbBtn.disabled = false;
+                    cancelCaptureBtn.disabled = false;
+                    spinner.classList.add('hidden');
+                });
+            });
+
+            // --- FILE UPLOAD WORKFLOW ---
+            browseLink.addEventListener('click', (e) => {
+                e.preventDefault();
+                fileInput.click();
+            });
+
+            fileInput.addEventListener('change', (e) => {
+                handleSelectedFile(e.target.files[0]);
+            });
+
+            // Drag and drop event listeners
+            ['dragenter', 'dragover'].forEach(eventName => {
+                dropZone.addEventListener(eventName, (e) => {
+                    e.preventDefault();
+                    dropZone.classList.add('highlight');
+                }, false);
+            });
+
+            ['dragleave', 'drop'].forEach(eventName => {
+                dropZone.addEventListener(eventName, (e) => {
+                    e.preventDefault();
+                    dropZone.classList.remove('highlight');
+                }, false);
+            });
+
+            dropZone.addEventListener('drop', (e) => {
+                const dt = e.dataTransfer;
+                const files = dt.files;
+                handleSelectedFile(files[0]);
+            });
+
+            function handleSelectedFile(file) {
+                if (!file) return;
+                hideAlert();
+
+                if (!file.type.startsWith('image/')) {
+                    showAlert('File is not a valid image.', 'error');
+                    return;
+                }
+
+                if (file.size > 10 * 1024 * 1024) {
+                    showAlert('Image size exceeds the 10MB limit.', 'error');
+                    return;
+                }
+
+                uploadedFile = file;
+                fileNameSpan.textContent = file.name;
+                
+                // Format file size
+                const sizeInMb = (file.size / (1024 * 1024)).toFixed(2);
+                fileSizeSpan.textContent = `${sizeInMb} MB`;
+
+                const reader = new FileReader();
+                reader.onload = (e) => {
+                    filePreview.src = e.target.result;
+                    filePreviewContainer.classList.remove('hidden');
+                    uploadSubmitBtn.disabled = false;
+                };
+                reader.readAsDataURL(file);
+            }
+
+            uploadSubmitBtn.addEventListener('click', () => {
+                if (!uploadedFile) return;
+
+                const formData = new FormData();
+                formData.append('file', uploadedFile);
+
+                uploadSubmitBtn.disabled = true;
+                uploadSpinner.classList.remove('hidden');
+                showAlert('Uploading and detecting objects in background...', 'info');
+
+                fetch('/upload', {
+                    method: 'POST',
+                    body: formData
+                })
+                .then(response => {
+                    return response.json().then(data => {
+                        if (!response.ok) {
+                            throw new Error(data.detail || 'Failed to upload/process.');
+                        }
+                        return data;
+                    });
+                })
+                .then(data => {
+                    showAlert(`Success! Detected: [${data.objects}] (Stored as ID ${data.image_id})`, 'success');
+                    
+                    // Reset upload states
+                    uploadedFile = null;
+                    filePreviewContainer.classList.add('hidden');
+                    filePreview.src = '';
+                    fileInput.value = '';
+                    uploadSubmitBtn.disabled = true;
+                    
+                    loadGallery();
+                })
+                .catch(error => {
+                    showAlert(error.message, 'error');
+                })
+                .finally(() => {
+                    uploadSubmitBtn.disabled = false;
+                    uploadSpinner.classList.add('hidden');
+                });
+            });
+
+            // --- GALLERY RENDER WORKFLOW ---
+            function loadGallery() {
+                galleryLoading.classList.remove('hidden');
+                imageGrid.classList.add('hidden');
+                galleryEmpty.classList.add('hidden');
+
+                fetch('/api/images')
+                .then(response => response.json())
+                .then(data => {
+                    galleryLoading.classList.add('hidden');
+                    
+                    if (data.images && data.images.length > 0) {
+                        imageGrid.textContent = ''; // clear grid securely
+                        
+                        data.images.forEach(img => {
+                            const card = document.createElement('div');
+                            card.className = 'image-card';
+                            
+                            const imgElement = document.createElement('img');
+                            // Show the processed image directly if available, else fallback to raw
+                            imgElement.src = img.has_processed ? `/images/processed/${img.id}` : `/images/raw/${img.id}`;
+                            imgElement.alt = img.filename;
+                            imgElement.loading = 'lazy';
+                            imgElement.addEventListener('click', () => openImageLightbox(img.id, img.filename, img.objects, img.created_at));
+
+                            const details = document.createElement('div');
+                            details.className = 'image-details';
+
+                            const title = document.createElement('span');
+                            title.className = 'image-title';
+                            title.textContent = img.filename;
+
+                            const tags = document.createElement('span');
+                            tags.className = 'image-tags';
+                            tags.textContent = img.objects || "No objects";
+
+                            const meta = document.createElement('span');
+                            meta.className = 'image-meta';
+                            const date = new Date(img.created_at);
+                            meta.textContent = `ID: ${img.id} | ${date.toLocaleDateString()} ${date.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}`;
+
+                            const deleteBtn = document.createElement('button');
+                            deleteBtn.className = 'delete-btn';
+                            deleteBtn.innerHTML = `
+                                <svg class="trash-icon" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                                </svg>
+                            `;
+                            deleteBtn.addEventListener('click', (e) => {
+                                e.stopPropagation();
+                                deleteImage(img.id);
+                            });
+
+                            details.appendChild(title);
+                            details.appendChild(tags);
+                            details.appendChild(meta);
+                            card.appendChild(imgElement);
+                            card.appendChild(details);
+                            card.appendChild(deleteBtn);
+                            
+                            imageGrid.appendChild(card);
+                        });
+                        
+                        imageGrid.classList.remove('hidden');
+                    } else {
+                        galleryEmpty.classList.remove('hidden');
+                    }
+                })
+                .catch(err => {
+                    galleryLoading.classList.add('hidden');
+                    showAlert('Failed to connect to database API.', 'error');
+                });
+            }
+
+            function deleteImage(id) {
+                if (!confirm(`Are you sure you want to delete Image ID ${id}?`)) return;
+
+                fetch(`/api/delete/${id}`, {
+                    method: 'POST'
+                })
+                .then(response => {
+                    if (!response.ok) throw new Error('Deletion failed.');
+                    showAlert('Image deleted successfully.', 'success');
+                    loadGallery();
+                })
+                .catch(err => {
+                    showAlert(err.message, 'error');
+                });
+            }
+
+            // --- COMPARISON LIGHTBOX WORKFLOW ---
+            function openImageLightbox(id, name, objects, createdDate) {
+                lightboxImgRaw.src = `/images/raw/${id}`;
+                lightboxImgProcessed.src = `/images/processed/${id}`;
+                lightboxTitle.textContent = name;
+                lightboxDetected.textContent = objects;
+                
+                const date = new Date(createdDate);
+                lightboxDate.textContent = `${date.toLocaleDateString()} ${date.toLocaleTimeString()}`;
+                
+                lightbox.classList.remove('hidden');
+            }
+
+            closeLightbox.addEventListener('click', () => {
+                lightbox.classList.add('hidden');
+                lightboxImgRaw.src = '';
+                lightboxImgProcessed.src = '';
+            });
+
+            lightbox.addEventListener('click', (e) => {
+                if (e.target === lightbox) {
+                    lightbox.classList.add('hidden');
+                    lightboxImgRaw.src = '';
+                    lightboxImgProcessed.src = '';
+                }
+            });
+
+            // --- HELPERS ---
+            function showAlert(message, type) {
+                alertBox.textContent = message;
+                alertBox.className = `alert-box alert-${type}`;
+                alertBox.classList.remove('hidden');
+            }
+
+            function hideAlert() {
+                alertBox.classList.add('hidden');
+            }
+        });
+    </script>
+</body>
+</html>

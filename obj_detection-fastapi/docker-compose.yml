@@ -1,0 +1,46 @@
+version: '3.8'
+
+services:
+  # Container 1: The PostgreSQL Database
+  db:
+    image: postgres:15
+    restart: always
+    environment:
+      - POSTGRES_USER=myuser
+      - POSTGRES_PASSWORD=mypassword
+      - POSTGRES_DB=fastapidb
+    ports:
+      - "5435:5432"  # Using 5435 on host to prevent local conflicts, db hostname internally maps to 5432
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+
+  # Container 2: The YOLOv11 Object Detection Service
+  yolo-service:
+    build:
+      context: ./yolo-service
+    image: obj-detection-yolo:latest
+    restart: always
+    ports:
+      - "8001:8001"
+    environment:
+      - MODEL_NAME=yolo11n.pt # Standard nano model, lightweight and fast on CPU
+      - PYTHONUNBUFFERED=1
+
+  # Container 3: The FastAPI Web Application Dashboard
+  web-app:
+    build:
+      context: ./web-app
+    image: obj-detection-web:latest
+    restart: always
+    ports:
+      - "5001:5000"  # Mapping to port 5001 on the host to match user's portal port
+    environment:
+      - DATABASE_URL=postgresql://myuser:mypassword@db:5432/fastapidb
+      - YOLO_SERVICE_URL=http://yolo-service:8001/detect
+      - PYTHONUNBUFFERED=1
+    depends_on:
+      - db
+      - yolo-service
+
+volumes:
+  pgdata:
