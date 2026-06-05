@@ -18,6 +18,9 @@ WORKDIR /app
 # Copy python dependencies file first to leverage Docker build cache
 COPY requirements.txt .
 
+# Install lightweight CPU-only PyTorch and Torchvision first to prevent downloading 2.5GB+ CUDA binary wheels
+RUN pip install --no-cache-dir torch torchvision --index-url https://download.pytorch.org/whl/cpu
+
 # Install python packages
 RUN pip install --no-cache-dir -r requirements.txt
 
