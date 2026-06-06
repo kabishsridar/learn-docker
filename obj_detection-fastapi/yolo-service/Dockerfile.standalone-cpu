@@ -1,0 +1,27 @@
+# Use official lightweight Python base image
+FROM python:3.11-slim-bookworm
+
+# Prevent Python from writing .pyc files and enable unbuffered logging
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1
+
+# Install system dependencies required for OpenCV operations
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    libgl1-mesa-glx \
+    libglib2.0-0 \
+    && rm -rf /var/lib/apt/lists/*
+
+# Set working directory inside the container
+WORKDIR /app
+
+# Install lightweight CPU-only PyTorch and Torchvision first (saves 2.5GB+ download size)
+RUN pip install --no-cache-dir torch torchvision --index-url https://download.pytorch.org/whl/cpu
+
+# Install ultralytics framework
+RUN pip install --no-cache-dir ultralytics
+
+# Pre-download YOLO11 Nano weights so container runs offline instantly
+RUN python -c "from ultralytics import YOLO; YOLO('yolo11n.pt')"
+
+# Entry point to run predictions
+ENTRYPOINT ["yolo", "predict", "model=yolo11n.pt"]
