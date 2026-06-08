@@ -1,0 +1,8 @@
+services:
+  web-app:
+    ports:
+    - 5001:5000
+  yolo-service:
+    ports:
+    - 5002:8001
+version: '3.8'
