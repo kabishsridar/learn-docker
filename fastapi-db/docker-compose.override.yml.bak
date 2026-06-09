@@ -1,0 +1,14 @@
+services:
+  web:
+    ports:
+    - 5007:5000
+  web_replica_2:
+    depends_on:
+    - db
+    environment:
+    - DATABASE_URL=postgresql://myuser:mypassword@db:5432/fastapidb
+    image: kabishsridar/fastapi-db-flask:latest
+    ports:
+    - 5008:5000
+    restart: always
+version: '3.8'

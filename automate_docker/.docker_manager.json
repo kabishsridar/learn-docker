@@ -1,0 +1,7 @@
+{
+  "auto_replicate_projects": [
+    "/home/vboxuser/learn-docker/fastapi-db",
+    "/home/vboxuser/learn-docker/fastapi-db-cam",
+    "/home/vboxuser/learn-docker/fastapi-db-docker"
+  ]
+}
